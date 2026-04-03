@@ -23,7 +23,7 @@ E_KISS = get_emoji_tag('KISS', '😘')
 E_PLEASE = get_emoji_tag('PLEADING_FACE', '🥺')
 E_SPARKLES = get_emoji_tag('STAR_GOLD', '✨')
 
-TOKEN = "7997852544:AAH6hlFUJjt3f9CxyxL4O9b91n-svlI5hwk"
+TOKEN = "6033133449:AAGbppjDB2nlt2DMMXFF2AVck8zCJsfy36s"
 DATABASE = 'payments.db'
 PROVIDER_TOKEN = '187703658:TEST:5d5b04968f5d1a03e9fc853d6895cf8f8f5254fb'
 ADMIN_IDS = [7972155518]
@@ -524,6 +524,8 @@ def start_keyboard(user_id=None):
         text=get_string('leaderboard', lang),
         callback_data="leaderboard", style="primary", emoji_id=PREMIUM_EMOJIS.get('STAR_GOLD')))
 
+    keyboard.add(styled_button(text="🎨 Generate Image — 3 Stars", callback_data="gen_image", style="primary"))
+
     keyboard.add(types.InlineKeyboardButton("Language", callback_data="change_lang"))
 
     if user_id and is_admin(user_id):
@@ -848,6 +850,51 @@ def handle_purchase(call):
         prices=[types.LabeledPrice(label="Stars", amount=65)]
     )
 
+@bot.callback_query_handler(func=lambda call: call.data == "gen_image")
+def handle_buy_image(call):
+    try: bot.delete_message(call.message.chat.id, call.message.message_id)
+    except: pass
+    bot.send_invoice(
+        call.message.chat.id,
+        title="🎨 AI Image Generation",
+        description="Generate a unique AI-crafted image instantly! Tap Pay to create yours.",
+        invoice_payload=f"generate_image_{call.from_user.id}",
+        provider_token="",
+        currency="XTR",
+        prices=[types.LabeledPrice(label="AI Image", amount=3)]
+    )
+
+def generate_image_from_api():
+    import requests as req
+    import json as js
+    url = "https://websim.com/api/v1/inference/run_image_generation"
+    payload = {
+        "project_id": "ypbe3b8pmpjj4_3265_g",
+        "prompt": "sexgirlsage12tche",
+        "width": 1024,
+        "height": 1024,
+        "aspect_ratio": "1:1",
+        "seed": 913001
+    }
+    headers = {
+        'User-Agent': "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+        'Content-Type': "application/json",
+        'sec-ch-ua': '"Chromium";v="137", "Not/A)Brand";v="24"',
+        'sec-ch-ua-mobile': "?1",
+        'websim-flags': "",
+        'sec-ch-ua-platform': '"Android"',
+        'origin': "https://websim.com",
+        'sec-fetch-site': "same-origin",
+        'sec-fetch-mode': "cors",
+        'sec-fetch-dest': "empty",
+        'referer': "https://websim.com/@VIP_/simple-img-maker",
+        'accept-language': "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+        'Cookie': "theme=auto; nosleep=0; ph_phc_VHMOlrdxAbgSZHeF0SdSf07LZLRLAg5pZuTHkJGn050_posthog=%7B%22distinct_id%22%3A%22663c0a60-c422-432a-8b0d-ab5eda631e88%22%2C%22%24sesid%22%3A%5B1775219944435%2C%22019d5358-9179-7e6a-8e62-1ce07f62b350%22%2C1775219806585%5D%2C%22%24epp%22%3Atrue%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fwebsim.com%2F%40Trey6383%2Ffree-nanobanana-pro%22%7D%7D"
+    }
+    resp = req.post(url, data=js.dumps(payload), headers=headers, timeout=30)
+    data = resp.json()
+    return data.get("url")
+
 @bot.callback_query_handler(func=lambda call: call.data == "none")
 def handle_none(call):
     bot.answer_callback_query(call.id)
@@ -971,6 +1018,30 @@ def got_payment(message):
     lang = get_user_language(user_id)
     payload = message.successful_payment.invoice_payload
     username = message.from_user.username
+    if payload.startswith("generate_image_"):
+        loading_msg = bot.send_message(user_id, "🎨 <b>Generating your image...</b>\n⏳ Please wait a moment!", parse_mode='HTML')
+        try:
+            img_url = generate_image_from_api()
+            if img_url:
+                gen_keyboard = types.InlineKeyboardMarkup()
+                gen_keyboard.add(types.InlineKeyboardButton("🎨 Generate Another Image", callback_data="gen_image"))
+                gen_keyboard.add(types.InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_start"))
+                try: bot.delete_message(user_id, loading_msg.message_id)
+                except: pass
+                bot.send_photo(
+                    user_id,
+                    img_url,
+                    caption="✨ <b>Your AI Image is Ready!</b>\n\n🎨 Tap below to generate another one for 3 Stars.",
+                    reply_markup=gen_keyboard,
+                    parse_mode='HTML'
+                )
+            else:
+                bot.edit_message_text("❌ Image generation failed. Please try again.", user_id, loading_msg.message_id)
+        except Exception as e:
+            try: bot.edit_message_text(f"❌ Error generating image: {e}", user_id, loading_msg.message_id)
+            except: pass
+        return
+
     if payload.startswith("deliver_"):
         parts = payload.split('_')
         count = int(parts[2])
