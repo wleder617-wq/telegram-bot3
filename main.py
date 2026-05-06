@@ -7,7 +7,7 @@ from flask import Flask
 from threading import Thread
 
 from premium_emojis import get_emoji_tag
-from i18n import get_string, PREMIUM_EMOJI_LINE
+from i18n import get_string
 
 E_HAND = get_emoji_tag('WAVE', '👋')
 E_HEART = get_emoji_tag('HEART_RED', '❤️')
@@ -23,7 +23,7 @@ E_KISS = get_emoji_tag('KISS', '😘')
 E_PLEASE = get_emoji_tag('PLEADING_FACE', '🥺')
 E_SPARKLES = get_emoji_tag('STAR_GOLD', '✨')
 
-TOKEN = "7997852544:AAH6hlFUJjt3f9CxyxL4O9b91n-svlI5hwk"
+TOKEN = "8721285488:AAGym7ilHiXEBHQ-gkjIsTtNzfdZFwSZsrw"
 DATABASE = 'payments.db'
 PROVIDER_TOKEN = '187703658:TEST:5d5b04968f5d1a03e9fc853d6895cf8f8f5254fb'
 ADMIN_IDS = [7972155518]
@@ -401,16 +401,16 @@ def get_total_users():
         return 0
 
 def styled_button(text, callback_data=None, url=None, style="primary", emoji_id=None):
-    btn = types.InlineKeyboardButton(text=text, callback_data=callback_data, url=url)
-    original_to_dict = btn.to_dict
-    def to_dict():
-        data = original_to_dict()
-        data['style'] = style
-        if emoji_id:
-            data['icon_custom_emoji_id'] = emoji_id
-        return data
-    btn.to_dict = to_dict
-    return btn
+      btn = types.InlineKeyboardButton(text=text, callback_data=callback_data, url=url)
+      original_to_dict = btn.to_dict
+      def to_dict():
+          data = original_to_dict()
+          data['style'] = style
+          if emoji_id:
+              data['icon_custom_emoji_id'] = emoji_id
+          return data
+      btn.to_dict = to_dict
+      return btn
 
 def get_user_milestone(user_id):
     with sqlite3.connect(DATABASE) as conn:
@@ -450,24 +450,35 @@ def build_referral_progress(ref_count, claimed_tiers):
     lines = []
     for invites_needed, reward, name in REFERRAL_TIERS:
         if invites_needed in claimed_tiers:
-            lines.append(f"\u2705 <b>{name}</b> \u2502 {invites_needed} invites \u2502 {reward} videos \u2502 <b>CLAIMED</b>")
+            lines.append(f"✅ <b>{name}</b> \u2014 <i>Claimed</i>")
         elif ref_count >= invites_needed:
-            lines.append(f"\U0001f381 <b>{name}</b> \u2502 {invites_needed} invites \u2502 {reward} videos \u2502 <b>READY!</b>")
+            lines.append(f"🎁 <b>{name}</b> \u2014 <b>READY!</b>")
         else:
-            lines.append(f"\U0001f512 <b>{name}</b> \u2502 {invites_needed} invites \u2502 {reward} videos \u2502 {ref_count}/{invites_needed}")
+            percent = min(100, int((ref_count / invites_needed) * 100))
+            bar = "▰" * (percent // 10) + "▱" * (10 - (percent // 10))
+            lines.append(f"🔒 <b>{name}</b> ({ref_count}/{invites_needed})\n└ {bar} {percent}%")
     return "\n".join(lines)
 
 def start_keyboard(user_id=None):
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     lang = get_user_language(user_id) if user_id else 'en'
-
-    # Get Star Emoji ID
     from premium_emojis import PREMIUM_EMOJIS
     star_emoji_id = PREMIUM_EMOJIS.get('STAR_GOLD')
+    fire_emoji_id = PREMIUM_EMOJIS.get('FIRE')
+    gift_emoji_id = PREMIUM_EMOJIS.get('GIFT')
+    wave_emoji_id = PREMIUM_EMOJIS.get('WAVE')
+    heart_emoji_id = PREMIUM_EMOJIS.get('HEART_RED')
 
+    # Row 1: Join Group (Full Width)
+    keyboard.add(types.InlineKeyboardButton(text="Join Group 🚀", url="https://t.me/+_U7Ve8BeTaVjY2Y1"))
+
+    # Row 2: Mega Pack (Full Width)
+    keyboard.add(styled_button(text="175,000 Videos 💎 5000 Stars", callback_data="buy_175000", style="success", emoji_id=star_emoji_id))
+
+    # Row 3: Standard Packs (Two Columns)
     keyboard.add(
-        styled_button(text=get_string('buy_5', lang), callback_data="buy_5", style="primary", emoji_id=star_emoji_id),
-        styled_button(text=get_string('buy_50', lang), callback_data="buy_50", style="primary", emoji_id=star_emoji_id)
+        styled_button(text=get_string('buy_50', lang), callback_data="buy_50", style="primary", emoji_id=star_emoji_id),
+        styled_button(text=get_string('buy_5', lang), callback_data="buy_5", style="primary", emoji_id=star_emoji_id)
     )
 
     if user_id:
@@ -476,61 +487,45 @@ def start_keyboard(user_id=None):
         next_tier = get_next_tier(ref_count, claimed_tiers)
 
         global BOT_USERNAME
-        if not BOT_USERNAME: BOT_USERNAME = bot.get_me().username
+        if not BOT_USERNAME:
+            try:
+                me = bot.get_me()
+                BOT_USERNAME = me.username
+            except:
+                BOT_USERNAME = "bot"
+        
         invite_link = f"https://t.me/{BOT_USERNAME}?start={user_id}"
         share_text = f"Hey! I found an amazing Video Bot! 🎬\n\nGet videos just by joining!\nInvite friends & unlock videos!\nContent delivered instantly!\n\nJoin now\n{invite_link}"
         import urllib.parse
         share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_link)}&text={urllib.parse.quote(share_text)}"
-
-        has_claimable = any(
-            ref_count >= inv and inv not in claimed_tiers
-            for inv, _, _ in REFERRAL_TIERS
-        )
+        
+        has_claimable = any(ref_count >= inv and inv not in claimed_tiers for inv, _, _ in REFERRAL_TIERS)
+        
+        # Row 4: Referral Actions
         if has_claimable:
-            keyboard.add(styled_button(
-                text=get_string('claim_rewards', lang),
-                callback_data="claim_rewards", style="danger", emoji_id=PREMIUM_EMOJIS.get('GIFT')))
-
+            keyboard.add(styled_button(text=get_string('claim_rewards', lang), callback_data="claim_rewards", style="danger", emoji_id=gift_emoji_id))
+        
         if next_tier:
             invites_needed, reward, name = next_tier
-            keyboard.add(styled_button(
-                text=f"{get_string('invite_friends', lang)} ({ref_count}/{invites_needed})",
-                url=share_url, style="success", emoji_id=PREMIUM_EMOJIS.get('WAVE')))
+            keyboard.add(styled_button(text=f"{get_string('invite_friends', lang)} ({ref_count}/{invites_needed})", url=share_url, style="success", emoji_id=wave_emoji_id))
         else:
-            keyboard.add(styled_button(
-                text=f"{get_string('all_tiers_done', lang)} ({ref_count})",
-                url=share_url, style="success", emoji_id=PREMIUM_EMOJIS.get('STAR_GOLD')))
+            keyboard.add(styled_button(text=f"{get_string('all_tiers_done', lang)} ({ref_count})", url=share_url, style="success", emoji_id=star_emoji_id))
 
-        keyboard.add(styled_button(
-        text=get_string('referral_menu', lang) + f" ({ref_count})",
-        callback_data="referral_menu", style="primary", emoji_id=PREMIUM_EMOJIS.get('HEART_RED')))
+        # Row 5: Referral Menu
+        keyboard.add(styled_button(text=get_string('referral_menu', lang) + f" ({ref_count})", callback_data="referral_menu", style="primary", emoji_id=heart_emoji_id))
 
-    hot_emoji_1 = "6087135901694040510"
-    hot_emoji_2 = "6087135936053777739"
-    hot_btn = types.InlineKeyboardButton(text="⭐⭐ Offers", callback_data="offer_menu")
-    original_hot_to_dict = hot_btn.to_dict
-    def hot_to_dict():
-        data = original_hot_to_dict()
-        data['style'] = 'success'
-        data['entities'] = [
-            {"type": "custom_emoji", "offset": 0, "length": 1, "custom_emoji_id": hot_emoji_1},
-            {"type": "custom_emoji", "offset": 1, "length": 1, "custom_emoji_id": hot_emoji_2}
-        ]
-        return data
-    hot_btn.to_dict = hot_to_dict
-    keyboard.add(hot_btn)
+    # Row 6: Offers & Leaderboard
+    keyboard.add(
+        styled_button(text="Offers", callback_data="offer_menu", style="success", emoji_id=fire_emoji_id),
+        styled_button(text=get_string('leaderboard', lang), callback_data="leaderboard", style="primary", emoji_id=star_emoji_id)
+    )
 
-    keyboard.add(styled_button(
-        text=get_string('leaderboard', lang),
-        callback_data="leaderboard", style="primary", emoji_id=PREMIUM_EMOJIS.get('STAR_GOLD')))
-
-    keyboard.add(styled_button(text="🎨 Generate Image — 3 Stars", callback_data="gen_image", style="primary"))
-
-    keyboard.add(types.InlineKeyboardButton("Language", callback_data="change_lang"))
-
+    # Row 7: Language & Admin
+    keyboard.add(types.InlineKeyboardButton("Language 🌐", callback_data="change_lang"))
+    
     if user_id and is_admin(user_id):
         total_users = get_total_users()
-        keyboard.add(styled_button(text=f"Admin ({total_users} Members)", callback_data="none", style="primary"))
+        keyboard.add(styled_button(text=f"Admin Panel ({total_users})", callback_data="none", style="primary"))
 
     return keyboard
 
@@ -550,15 +545,47 @@ def handle_back_to_start(call):
         try: bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=start_keyboard(call.from_user.id))
         except: pass
 
-@bot.callback_query_handler(func=lambda call: call.data == "change_lang")
-def handle_change_lang(call):
-    lang = get_user_language(call.from_user.id)
-    bot.edit_message_text(
-        get_string('select_language', lang),
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup=language_keyboard()
+@bot.message_handler(commands=['dee'])
+def handle_dee_command(message):
+    lang = get_user_language(message.from_user.id)
+    from premium_emojis import PREMIUM_EMOJIS
+    fire_emoji = PREMIUM_EMOJIS.get('FIRE')
+    star_emoji = PREMIUM_EMOJIS.get('STAR_GOLD')
+    gift_emoji = PREMIUM_EMOJIS.get('GIFT')
+
+    markup = types.InlineKeyboardMarkup()
+    # Unique payload for the 499 videos offer
+    markup.add(types.InlineKeyboardButton(
+        text=f"BUY NOW {star_emoji}",
+        callback_data="buy_499_special"
+    ))
+
+    offer_text = (
+        f"{fire_emoji} <b>EXCLUSIVE LIMITED OFFER!</b> {fire_emoji}\n\n"
+        f"Unlock <b>499 Premium Videos</b> {gift_emoji}\n"
+        f"For only <b>399 Stars</b> {star_emoji}\n\n"
+        f"⚡ <i>Instant Delivery guaranteed!</i>"
     )
+
+    bot.send_message(message.chat.id, offer_text, parse_mode='HTML', reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == "buy_499_special")
+def handle_buy_499(call):
+    user_id = call.from_user.id
+    # Create an invoice for 399 Stars
+    prices = [types.LabeledPrice(label='499 Premium Videos', amount=399)]
+    
+    bot.send_invoice(
+        call.message.chat.id,
+        title="Special Offer: 499 Videos",
+        description="Get 499 high-quality premium videos instantly!",
+        invoice_payload="deliver_videos_499",
+        provider_token=PROVIDER_TOKEN,
+        currency="XTR",
+        prices=prices,
+        start_parameter="special_offer_499"
+    )
+    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "offer_menu")
 def handle_offer_menu(call):
@@ -579,7 +606,7 @@ def handle_offer_menu(call):
     )
 
     bot.edit_message_text(
-        PREMIUM_EMOJI_LINE + "\n✨ <b>Special Premium Offers</b> ✨\n\nChoose your pack and get instant delivery!",
+        "✨ <b>Special Premium Offers</b> ✨\n\nChoose your pack and get instant delivery!",
         call.message.chat.id,
         call.message.message_id,
         reply_markup=keyboard,
@@ -606,7 +633,7 @@ def handle_offer_command(message):
 
     bot.send_message(
         message.chat.id,
-        PREMIUM_EMOJI_LINE + "\n✨ <b>Special Premium Offers</b> ✨\n\nChoose your pack and get instant delivery!",
+        "✨ <b>Special Premium Offers</b> ✨\n\nChoose your pack and get instant delivery!",
         reply_markup=keyboard,
         parse_mode='HTML'
     )
@@ -626,7 +653,8 @@ def handle_payment_request(call):
         120: 100,
         350: 250,
         750: 500,
-        1600: 1000
+        1600: 1000,
+        175000: 5000
     }
 
     stars_price = stars_map.get(count, count)
@@ -661,7 +689,6 @@ def handle_referral_menu(call):
     progress_text = build_referral_progress(ref_count, claimed_tiers)
 
     text = (
-        f"{PREMIUM_EMOJI_LINE}\n"
         f"{get_string('dashboard_title', lang)}\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
         f"<b>{get_string('total_invites', lang)}:</b> <code>{ref_count}</code>\n"
@@ -768,7 +795,8 @@ def handle_payment_request(call):
         120: 100,
         350: 250,
         750: 500,
-        1600: 1000
+        1600: 1000,
+        175000: 5000
     }
 
     stars_price = stars_map.get(count, count)
@@ -820,80 +848,17 @@ def handle_leaderboard(call):
         try: bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=keyboard)
         except: pass
 
-@bot.callback_query_handler(func=lambda call: call.data == "buy_5")
-def handle_purchase_5(call):
-    try: bot.delete_message(call.message.chat.id, call.message.message_id)
-    except: pass
-
-    bot.send_invoice(
-        call.message.chat.id,
-        title="\U0001f48e Premium Package: 7 Videos",
-        description="Pay 7 Stars and get 7 exclusive premium videos!",
-        invoice_payload=f"deliver_{call.from_user.id}_7",
-        provider_token=PROVIDER_TOKEN,
-        currency="XTR",
-        prices=[types.LabeledPrice(label="Stars", amount=7)]
-    )
+@bot.callback_query_handler(func=lambda call: call.data == "buy_175000")
+def handle_buy_175000(call):
+    handle_payment_request(call)
 
 @bot.callback_query_handler(func=lambda call: call.data == "buy_50")
-def handle_purchase(call):
-    try: bot.delete_message(call.message.chat.id, call.message.message_id)
-    except: pass
+def handle_buy_50(call):
+    handle_payment_request(call)
 
-    bot.send_invoice(
-        call.message.chat.id,
-        title="\U0001f48e Premium Package: 65 Videos",
-        description="Pay 65 Stars and get 65 exclusive premium videos!",
-        invoice_payload=f"deliver_{call.from_user.id}_65",
-        provider_token=PROVIDER_TOKEN,
-        currency="XTR",
-        prices=[types.LabeledPrice(label="Stars", amount=65)]
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data == "gen_image")
-def handle_buy_image(call):
-    try: bot.delete_message(call.message.chat.id, call.message.message_id)
-    except: pass
-    bot.send_invoice(
-        call.message.chat.id,
-        title="🎨 AI Image Generation",
-        description="Generate a unique AI-crafted image instantly! Tap Pay to create yours.",
-        invoice_payload=f"generate_image_{call.from_user.id}",
-        provider_token="",
-        currency="XTR",
-        prices=[types.LabeledPrice(label="AI Image", amount=3)]
-    )
-
-def generate_image_from_api():
-    import requests as req
-    import json as js
-    url = "https://websim.com/api/v1/inference/run_image_generation"
-    payload = {
-        "project_id": "ypbe3b8pmpjj4_3265_g",
-        "prompt": "sexgirlsage12tche",
-        "width": 1024,
-        "height": 1024,
-        "aspect_ratio": "1:1",
-        "seed": 913001
-    }
-    headers = {
-        'User-Agent': "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-        'Content-Type': "application/json",
-        'sec-ch-ua': '"Chromium";v="137", "Not/A)Brand";v="24"',
-        'sec-ch-ua-mobile': "?1",
-        'websim-flags': "",
-        'sec-ch-ua-platform': '"Android"',
-        'origin': "https://websim.com",
-        'sec-fetch-site': "same-origin",
-        'sec-fetch-mode': "cors",
-        'sec-fetch-dest': "empty",
-        'referer': "https://websim.com/@VIP_/simple-img-maker",
-        'accept-language': "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
-        'Cookie': "theme=auto; nosleep=0; ph_phc_VHMOlrdxAbgSZHeF0SdSf07LZLRLAg5pZuTHkJGn050_posthog=%7B%22distinct_id%22%3A%22663c0a60-c422-432a-8b0d-ab5eda631e88%22%2C%22%24sesid%22%3A%5B1775219944435%2C%22019d5358-9179-7e6a-8e62-1ce07f62b350%22%2C1775219806585%5D%2C%22%24epp%22%3Atrue%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fwebsim.com%2F%40Trey6383%2Ffree-nanobanana-pro%22%7D%7D"
-    }
-    resp = req.post(url, data=js.dumps(payload), headers=headers, timeout=30)
-    data = resp.json()
-    return data.get("url")
+@bot.callback_query_handler(func=lambda call: call.data == "buy_5")
+def handle_buy_5(call):
+    handle_payment_request(call)
 
 @bot.callback_query_handler(func=lambda call: call.data == "none")
 def handle_none(call):
@@ -944,12 +909,12 @@ def handle_check_referral(message):
     total_earned = sum(reward for inv, reward, _ in REFERRAL_TIERS if inv in claimed_tiers)
 
     text = (
-        f"\U0001f3c6 <b>YOUR REFERRAL PROGRESS</b>\n"
+        f"\U0001f3c6 <b>REFERRAL STATS</b>\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
-        f"\U0001f465 <b>Total Invites:</b> <code>{ref_count}</code>\n"
-        f"\U0001f381 <b>Videos Earned:</b> <code>{total_earned}</code>\n\n"
+        f"👤 <b>Total Invites:</b> <code>{ref_count}</code>\n"
+        f"🎁 <b>Videos Earned:</b> <code>{total_earned}</code>\n\n"
         f"{progress_text}\n\n"
-        f"\U0001f517 <b>Invite Link:</b>\n<code>{invite_link}</code>"
+        f"🔗 <b>Your Link:</b>\n<code>{invite_link}</code>"
     )
     bot.send_message(message.chat.id, text, parse_mode='HTML')
 
@@ -1010,76 +975,48 @@ def handle_buyers_list(message):
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def checkout(pre_checkout_query):
-    bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+      bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
 @bot.message_handler(content_types=['successful_payment'])
 def got_payment(message):
-    user_id = message.from_user.id
-    lang = get_user_language(user_id)
-    payload = message.successful_payment.invoice_payload
-    username = message.from_user.username
-    if payload.startswith("generate_image_"):
-        loading_msg = bot.send_message(user_id, "🎨 <b>Generating your image...</b>\n⏳ Please wait a moment!", parse_mode='HTML')
-        try:
-            img_url = generate_image_from_api()
-            if img_url:
-                gen_keyboard = types.InlineKeyboardMarkup()
-                gen_keyboard.add(types.InlineKeyboardButton("🎨 Generate Another Image", callback_data="gen_image"))
-                gen_keyboard.add(types.InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_start"))
-                try: bot.delete_message(user_id, loading_msg.message_id)
-                except: pass
-                bot.send_photo(
-                    user_id,
-                    img_url,
-                    caption="✨ <b>Your AI Image is Ready!</b>\n\n🎨 Tap below to generate another one for 3 Stars.",
-                    reply_markup=gen_keyboard,
-                    parse_mode='HTML'
-                )
-            else:
-                bot.edit_message_text("❌ Image generation failed. Please try again.", user_id, loading_msg.message_id)
-        except Exception as e:
-            try: bot.edit_message_text(f"❌ Error generating image: {e}", user_id, loading_msg.message_id)
-            except: pass
-        return
+      try:
+          user_id = message.from_user.id
+          username = message.from_user.username
+          amount = message.successful_payment.total_amount
+          currency = message.successful_payment.currency
+          charge_id = message.successful_payment.telegram_payment_charge_id
+          lang = get_user_language(user_id)
+          
+          # Admin Notification
+          for admin_id in NOTIFY_IDS:
+              try:
+                  bot.send_message(admin_id,
+                      f"💰 <b>New Payment Received!</b>\n\n"
+                      f"👤 <b>User:</b> @{escape_html(username) if username else 'N/A'}\n"
+                      f"🆔 <b>User ID:</b> <code>{user_id}</code>\n"
+                      f"💵 <b>Amount:</b> <code>{amount}</code> {currency}\n"
+                      f"🧾 <b>Charge ID:</b> <code>{charge_id}</code>",
+                      parse_mode='HTML')
+              except: pass
 
-    if payload.startswith("deliver_"):
-        parts = payload.split('_')
-        count = int(parts[2])
-        unsent = get_unsent_videos(user_id, limit=count)
-        if unsent:
-            bot.send_message(user_id, get_string('payment_success', lang, count=len(unsent)), parse_mode='HTML')
-
-            admin_msg_id = None
-            for admin_id in NOTIFY_IDS:
-                try:
-                    alert = (f"{E_STAR} <b>New Purchase!</b>\n\n"
-                            f"\U0001f464 User: @{username if username else 'N/A'}\n"
-                            f"\U0001f194 ID: <code>{user_id}</code>\n"
-                            f"\U0001f4b0 Amount: {message.successful_payment.total_amount} {message.successful_payment.currency}\n"
-                            f"\U0001f4e6 Package: {len(unsent)} Videos\n"
-                            f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
-                            f"\u23f3 Status: <b>Starting delivery...</b>")
-                    sent_msg = bot.send_message(admin_id, alert, parse_mode='HTML')
-                    admin_msg_id = sent_msg.message_id
-                except: pass
-
-            delivery_queue.put((user_id, unsent, notify_delivery_success, notify_delivery_failure, admin_msg_id))
-
-            with sqlite3.connect(DATABASE) as conn:
-                cursor = conn.cursor()
-                cursor.execute('INSERT OR IGNORE INTO payments (user_id, payment_id, amount, currency) VALUES (?, ?, ?, ?)',
-                             (user_id, message.successful_payment.telegram_payment_charge_id,
-                              message.successful_payment.total_amount, message.successful_payment.currency))
-                conn.commit()
-
-            if update_user_milestone(user_id, message.successful_payment.total_amount):
-                bonus_vids = get_unsent_videos(user_id, limit=100)
-                if bonus_vids:
-                    bot.send_message(user_id, f"\U0001f38a <b>CONGRATULATIONS!</b> \U0001f38a\n\nYou reached <b>750 Stars</b> milestone! \U0001f3c6\nHere are <b>100 BONUS Premium Videos</b> just for you! {E_HEART}", parse_mode='HTML')
-                    delivery_queue.put((user_id, bonus_vids, notify_delivery_success, notify_delivery_failure, None))
-                    for admin_id in NOTIFY_IDS:
-                        try: bot.send_message(admin_id, f"\U0001f3c6 User {user_id} reached 750 Stars milestone and received 100 bonus videos!")
-                        except: pass
+          payload = message.successful_payment.invoice_payload
+          video_count = 5
+          if payload and "175000" in payload: video_count = 175000
+          elif payload and "499" in payload: video_count = 499
+          elif payload and "50" in payload: video_count = 50
+          
+          unsent = get_unsent_videos(user_id, limit=video_count)
+          if unsent:
+              bot.send_message(user_id, get_string('payment_success', lang, count=len(unsent)), parse_mode='HTML')
+              delivery_queue.put((user_id, unsent, notify_delivery_success, notify_delivery_failure, None))
+              
+              with sqlite3.connect(DATABASE) as conn:
+                  cursor = conn.cursor()
+                  cursor.execute('INSERT OR IGNORE INTO payments (user_id, payment_id, amount, currency) VALUES (?, ?, ?, ?)',
+                               (user_id, charge_id, amount, currency))
+                  conn.commit()
+      except Exception as e:
+          print(f"Error in got_payment: {e}")
 
 @bot.message_handler(commands=['db_debug'])
 def handle_db_debug(message):
@@ -1299,7 +1236,7 @@ def handle_promo(message):
         f"\U0001f4a0 50 invites = 250 free videos\n"
         f"\U0001f451 100 invites = 500 free videos\n"
         f"\U0001f525 200 invites = 1000 free videos\n\n"
-        f"<b>Join our channel:</b> https://t.me/+Mx69KEAaOa8zOTBi\n\n"
+        f"<b>Join our channel:</b> https://t.me/+_U7Ve8BeTaVjY2Y1"
         f"{diamond_line}\n\n"
         f"\U0001f525 <b>TOTAL: Up to 1960 FREE VIDEOS!</b> \U0001f525\n\n"
         f"\U0001f447 <b>TAP BELOW TO START NOW!</b> \U0001f447"
