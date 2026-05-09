@@ -753,8 +753,7 @@ def start_keyboard(user_id=None):
 
     # الصف التاسع: Language & My Videos
     keyboard.add(
-        types.InlineKeyboardButton("🌐 Language", callback_data="change_lang"),
-        styled_button(text="🎬 MY VIDEOS 🎬", callback_data="my_videos", style="primary", emoji_id=star_emoji_id)
+        types.InlineKeyboardButton("🌐 Language", callback_data="change_lang")
     )
 
     if user_id and is_admin(user_id):
