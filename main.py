@@ -1836,9 +1836,6 @@ payment_thread.daemon = True
 payment_thread.start()
 
 print(f"{E_FIRE} Premium Video Bot v3.0 is starting... {E_FIRE}")
-print(f"{E_STAR} Enhanced features active!")
-print(f"{E_CROWN} Star prices from 100+!")
-print(f"{E_ROCKET} Advanced referral system ready!")
 
 while True:
     try:
