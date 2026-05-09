@@ -1,11 +1,15 @@
+
 import telebot
 from telebot import types
 import sqlite3
 import os
 import time
 import queue
+import threading
 from flask import Flask
 from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
+import urllib.parse
 
 from premium_emojis import get_emoji_tag
 from i18n import get_string, PREMIUM_EMOJI_LINE
@@ -24,15 +28,6 @@ E_WINK = get_emoji_tag('WINK', '😉')
 E_KISS = get_emoji_tag('KISS', '😘')
 E_PLEASE = get_emoji_tag('PLEADING_FACE', '🥺')
 E_SPARKLES = get_emoji_tag('STAR_GOLD', '✨')
-E_CROWN = get_emoji_tag('CROWN', '👑')
-E_DIAMOND = get_emoji_tag('DIAMOND', '💎')
-E_ROCKET = get_emoji_tag('ROCKET', '🚀')
-E_TROPHY = get_emoji_tag('TROPHY', '🏆')
-E_PARTY = get_emoji_tag('PARTY', '🎉')
-E_MONEY = get_emoji_tag('MONEY', '💰')
-E_LOCK = get_emoji_tag('LOCK', '🔒')
-E_GLOBE = get_emoji_tag('GLOBE', '🌍')
-E_CALENDAR = get_emoji_tag('CALENDAR', '📅')
 
 # Configuration - Kept as original
 TOKEN = "8721285488:AAH8XG2wT8Mi3JyUD6jzRWjVnyUWKi6Iysk"
