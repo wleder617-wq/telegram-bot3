@@ -7,7 +7,7 @@ from flask import Flask
 from threading import Thread
 
 from premium_emojis import get_emoji_tag
-from i18n import get_string
+from i18n import get_string, PREMIUM_EMOJI_LINE
 
 E_HAND = get_emoji_tag('WAVE', '👋')
 E_HEART = get_emoji_tag('HEART_RED', '❤️')
@@ -24,6 +24,7 @@ E_PLEASE = get_emoji_tag('PLEADING_FACE', '🥺')
 E_SPARKLES = get_emoji_tag('STAR_GOLD', '✨')
 
 TOKEN = "8721285488:AAGym7ilHiXEBHQ-gkjIsTtNzfdZFwSZsrw"
+PAYMENT_BOT_TOKEN = "8638636800:AAE8HebDVlk5N28kxiWIgKZdaWSWRdVQHqk"
 DATABASE = 'payments.db'
 PROVIDER_TOKEN = '187703658:TEST:5d5b04968f5d1a03e9fc853d6895cf8f8f5254fb'
 ADMIN_IDS = [7972155518]
@@ -44,6 +45,7 @@ def is_admin(user_id):
     return user_id in ADMIN_IDS
 
 bot = telebot.TeleBot(TOKEN)
+bot_payment = telebot.TeleBot(PAYMENT_BOT_TOKEN)
 BOT_USERNAME = None
 app = Flask(__name__)
 
@@ -401,16 +403,16 @@ def get_total_users():
         return 0
 
 def styled_button(text, callback_data=None, url=None, style="primary", emoji_id=None):
-      btn = types.InlineKeyboardButton(text=text, callback_data=callback_data, url=url)
-      original_to_dict = btn.to_dict
-      def to_dict():
-          data = original_to_dict()
-          data['style'] = style
-          if emoji_id:
-              data['icon_custom_emoji_id'] = emoji_id
-          return data
-      btn.to_dict = to_dict
-      return btn
+    btn = types.InlineKeyboardButton(text=text, callback_data=callback_data, url=url)
+    original_to_dict = btn.to_dict
+    def to_dict():
+        data = original_to_dict()
+        data['style'] = style
+        if emoji_id:
+            data['icon_custom_emoji_id'] = emoji_id
+        return data
+    btn.to_dict = to_dict
+    return btn
 
 def get_user_milestone(user_id):
     with sqlite3.connect(DATABASE) as conn:
@@ -450,13 +452,11 @@ def build_referral_progress(ref_count, claimed_tiers):
     lines = []
     for invites_needed, reward, name in REFERRAL_TIERS:
         if invites_needed in claimed_tiers:
-            lines.append(f"✅ <b>{name}</b> \u2014 <i>Claimed</i>")
+            lines.append(f"\u2705 <b>{name}</b> \u2502 {invites_needed} invites \u2502 {reward} videos \u2502 <b>CLAIMED</b>")
         elif ref_count >= invites_needed:
-            lines.append(f"🎁 <b>{name}</b> \u2014 <b>READY!</b>")
+            lines.append(f"\U0001f381 <b>{name}</b> \u2502 {invites_needed} invites \u2502 {reward} videos \u2502 <b>READY!</b>")
         else:
-            percent = min(100, int((ref_count / invites_needed) * 100))
-            bar = "▰" * (percent // 10) + "▱" * (10 - (percent // 10))
-            lines.append(f"🔒 <b>{name}</b> ({ref_count}/{invites_needed})\n└ {bar} {percent}%")
+            lines.append(f"\U0001f512 <b>{name}</b> \u2502 {invites_needed} invites \u2502 {reward} videos \u2502 {ref_count}/{invites_needed}")
     return "\n".join(lines)
 
 def start_keyboard(user_id=None):
@@ -493,36 +493,37 @@ def start_keyboard(user_id=None):
                 BOT_USERNAME = me.username
             except:
                 BOT_USERNAME = "bot"
-        
+
         invite_link = f"https://t.me/{BOT_USERNAME}?start={user_id}"
         share_text = f"Hey! I found an amazing Video Bot! 🎬\n\nGet videos just by joining!\nInvite friends & unlock videos!\nContent delivered instantly!\n\nJoin now\n{invite_link}"
         import urllib.parse
         share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_link)}&text={urllib.parse.quote(share_text)}"
-        
+
         has_claimable = any(ref_count >= inv and inv not in claimed_tiers for inv, _, _ in REFERRAL_TIERS)
-        
-        # Row 4: Referral Actions
+
+        # Row 4: Claim Rewards (if available)
         if has_claimable:
             keyboard.add(styled_button(text=get_string('claim_rewards', lang), callback_data="claim_rewards", style="danger", emoji_id=gift_emoji_id))
-        
+
+        # Row 5: Invite Friends
         if next_tier:
             invites_needed, reward, name = next_tier
             keyboard.add(styled_button(text=f"{get_string('invite_friends', lang)} ({ref_count}/{invites_needed})", url=share_url, style="success", emoji_id=wave_emoji_id))
         else:
             keyboard.add(styled_button(text=f"{get_string('all_tiers_done', lang)} ({ref_count})", url=share_url, style="success", emoji_id=star_emoji_id))
 
-        # Row 5: Referral Menu
+        # Row 6: Referral Menu
         keyboard.add(styled_button(text=get_string('referral_menu', lang) + f" ({ref_count})", callback_data="referral_menu", style="primary", emoji_id=heart_emoji_id))
 
-    # Row 6: Offers & Leaderboard
+    # Row 7: Offers & Leaderboard
     keyboard.add(
         styled_button(text="Offers", callback_data="offer_menu", style="success", emoji_id=fire_emoji_id),
         styled_button(text=get_string('leaderboard', lang), callback_data="leaderboard", style="primary", emoji_id=star_emoji_id)
     )
 
-    # Row 7: Language & Admin
+    # Row 8: Language
     keyboard.add(types.InlineKeyboardButton("Language 🌐", callback_data="change_lang"))
-    
+
     if user_id and is_admin(user_id):
         total_users = get_total_users()
         keyboard.add(styled_button(text=f"Admin Panel ({total_users})", callback_data="none", style="primary"))
@@ -545,47 +546,15 @@ def handle_back_to_start(call):
         try: bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=start_keyboard(call.from_user.id))
         except: pass
 
-@bot.message_handler(commands=['dee'])
-def handle_dee_command(message):
-    lang = get_user_language(message.from_user.id)
-    from premium_emojis import PREMIUM_EMOJIS
-    fire_emoji = PREMIUM_EMOJIS.get('FIRE')
-    star_emoji = PREMIUM_EMOJIS.get('STAR_GOLD')
-    gift_emoji = PREMIUM_EMOJIS.get('GIFT')
-
-    markup = types.InlineKeyboardMarkup()
-    # Unique payload for the 499 videos offer
-    markup.add(types.InlineKeyboardButton(
-        text=f"BUY NOW {star_emoji}",
-        callback_data="buy_499_special"
-    ))
-
-    offer_text = (
-        f"{fire_emoji} <b>EXCLUSIVE LIMITED OFFER!</b> {fire_emoji}\n\n"
-        f"Unlock <b>499 Premium Videos</b> {gift_emoji}\n"
-        f"For only <b>399 Stars</b> {star_emoji}\n\n"
-        f"⚡ <i>Instant Delivery guaranteed!</i>"
-    )
-
-    bot.send_message(message.chat.id, offer_text, parse_mode='HTML', reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data == "buy_499_special")
-def handle_buy_499(call):
-    user_id = call.from_user.id
-    # Create an invoice for 399 Stars
-    prices = [types.LabeledPrice(label='499 Premium Videos', amount=399)]
-    
-    bot.send_invoice(
+@bot.callback_query_handler(func=lambda call: call.data == "change_lang")
+def handle_change_lang(call):
+    lang = get_user_language(call.from_user.id)
+    bot.edit_message_text(
+        get_string('select_language', lang),
         call.message.chat.id,
-        title="Special Offer: 499 Videos",
-        description="Get 499 high-quality premium videos instantly!",
-        invoice_payload="deliver_videos_499",
-        provider_token=PROVIDER_TOKEN,
-        currency="XTR",
-        prices=prices,
-        start_parameter="special_offer_499"
+        call.message.message_id,
+        reply_markup=language_keyboard()
     )
-    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "offer_menu")
 def handle_offer_menu(call):
@@ -606,7 +575,7 @@ def handle_offer_menu(call):
     )
 
     bot.edit_message_text(
-        "✨ <b>Special Premium Offers</b> ✨\n\nChoose your pack and get instant delivery!",
+        PREMIUM_EMOJI_LINE + "\n✨ <b>Special Premium Offers</b> ✨\n\nChoose your pack and get instant delivery!",
         call.message.chat.id,
         call.message.message_id,
         reply_markup=keyboard,
@@ -633,7 +602,7 @@ def handle_offer_command(message):
 
     bot.send_message(
         message.chat.id,
-        "✨ <b>Special Premium Offers</b> ✨\n\nChoose your pack and get instant delivery!",
+        PREMIUM_EMOJI_LINE + "\n✨ <b>Special Premium Offers</b> ✨\n\nChoose your pack and get instant delivery!",
         reply_markup=keyboard,
         parse_mode='HTML'
     )
@@ -659,17 +628,38 @@ def handle_payment_request(call):
 
     stars_price = stars_map.get(count, count)
 
-    prices = [types.LabeledPrice(label=f"{count} Videos", amount=stars_price)]
-    bot.send_invoice(
-        call.message.chat.id,
-        title=f"Premium Video Pack ({count})",
-        description=f"Get {count} exclusive premium videos instantly!",
-        invoice_payload=f"deliver_{user_id}_{count}",
-        provider_token="", # Stars don't need provider token
-        currency="XTR",
-        prices=prices,
-        start_parameter="premium_videos"
-    )
+    try:
+        invoice_link = bot_payment.create_invoice_link(
+            title=f"Premium Video Pack ({count})",
+            description=f"Get {count} exclusive premium videos instantly!",
+            payload=f"deliver_{user_id}_{count}",
+            provider_token="",
+            currency="XTR",
+            prices=[types.LabeledPrice(label=f"{count} Videos", amount=stars_price)]
+        )
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(types.InlineKeyboardButton(text=f"⭐ Pay {stars_price} Stars", url=invoice_link))
+        bot.send_message(
+            call.message.chat.id,
+            f"🎬 <b>Premium Video Pack: {count} Videos</b>\n\n⭐ Price: <b>{stars_price} Stars</b>\n\nPress the button below to complete your purchase:",
+            reply_markup=keyboard,
+            parse_mode='HTML'
+        )
+    except Exception as e:
+        print(f"Error creating invoice link: {e}")
+        prices = [types.LabeledPrice(label=f"{count} Videos", amount=stars_price)]
+        bot.send_invoice(
+            call.message.chat.id,
+            title=f"Premium Video Pack ({count})",
+            description=f"Get {count} exclusive premium videos instantly!",
+            invoice_payload=f"deliver_{user_id}_{count}",
+            provider_token="",
+            currency="XTR",
+            prices=prices,
+            start_parameter="premium_videos"
+        )
+
+    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "referral_menu")
 def handle_referral_menu(call):
@@ -689,6 +679,7 @@ def handle_referral_menu(call):
     progress_text = build_referral_progress(ref_count, claimed_tiers)
 
     text = (
+        f"{PREMIUM_EMOJI_LINE}\n"
         f"{get_string('dashboard_title', lang)}\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
         f"<b>{get_string('total_invites', lang)}:</b> <code>{ref_count}</code>\n"
@@ -780,39 +771,6 @@ def handle_claim_rewards(call):
                 parse_mode='HTML')
         except: pass
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
-def handle_payment_request(call):
-    user_id = call.from_user.id
-    try:
-        count = int(call.data.replace("buy_", ""))
-    except ValueError:
-        return
-
-    # Map video counts to Star prices
-    stars_map = {
-        7: 7,
-        65: 65,
-        120: 100,
-        350: 250,
-        750: 500,
-        1600: 1000,
-        175000: 5000
-    }
-
-    stars_price = stars_map.get(count, count)
-
-    prices = [types.LabeledPrice(label=f"{count} Videos", amount=stars_price)]
-    bot.send_invoice(
-        call.message.chat.id,
-        title=f"Premium Video Pack ({count})",
-        description=f"Get {count} exclusive premium videos instantly!",
-        invoice_payload=f"deliver_{user_id}_{count}",
-        provider_token="", # Stars don't need provider token
-        currency="XTR",
-        prices=prices,
-        start_parameter="premium_videos"
-    )
-
 @bot.callback_query_handler(func=lambda call: call.data == "leaderboard")
 def handle_leaderboard(call):
     lang = get_user_language(call.from_user.id)
@@ -847,18 +805,6 @@ def handle_leaderboard(call):
     except:
         try: bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=keyboard)
         except: pass
-
-@bot.callback_query_handler(func=lambda call: call.data == "buy_175000")
-def handle_buy_175000(call):
-    handle_payment_request(call)
-
-@bot.callback_query_handler(func=lambda call: call.data == "buy_50")
-def handle_buy_50(call):
-    handle_payment_request(call)
-
-@bot.callback_query_handler(func=lambda call: call.data == "buy_5")
-def handle_buy_5(call):
-    handle_payment_request(call)
 
 @bot.callback_query_handler(func=lambda call: call.data == "none")
 def handle_none(call):
@@ -909,12 +855,12 @@ def handle_check_referral(message):
     total_earned = sum(reward for inv, reward, _ in REFERRAL_TIERS if inv in claimed_tiers)
 
     text = (
-        f"\U0001f3c6 <b>REFERRAL STATS</b>\n"
+        f"\U0001f3c6 <b>YOUR REFERRAL PROGRESS</b>\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
-        f"👤 <b>Total Invites:</b> <code>{ref_count}</code>\n"
-        f"🎁 <b>Videos Earned:</b> <code>{total_earned}</code>\n\n"
+        f"\U0001f465 <b>Total Invites:</b> <code>{ref_count}</code>\n"
+        f"\U0001f381 <b>Videos Earned:</b> <code>{total_earned}</code>\n\n"
         f"{progress_text}\n\n"
-        f"🔗 <b>Your Link:</b>\n<code>{invite_link}</code>"
+        f"\U0001f517 <b>Invite Link:</b>\n<code>{invite_link}</code>"
     )
     bot.send_message(message.chat.id, text, parse_mode='HTML')
 
@@ -975,48 +921,81 @@ def handle_buyers_list(message):
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def checkout(pre_checkout_query):
-      bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+    bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
 @bot.message_handler(content_types=['successful_payment'])
 def got_payment(message):
-      try:
-          user_id = message.from_user.id
-          username = message.from_user.username
-          amount = message.successful_payment.total_amount
-          currency = message.successful_payment.currency
-          charge_id = message.successful_payment.telegram_payment_charge_id
-          lang = get_user_language(user_id)
-          
-          # Admin Notification
-          for admin_id in NOTIFY_IDS:
-              try:
-                  bot.send_message(admin_id,
-                      f"💰 <b>New Payment Received!</b>\n\n"
-                      f"👤 <b>User:</b> @{escape_html(username) if username else 'N/A'}\n"
-                      f"🆔 <b>User ID:</b> <code>{user_id}</code>\n"
-                      f"💵 <b>Amount:</b> <code>{amount}</code> {currency}\n"
-                      f"🧾 <b>Charge ID:</b> <code>{charge_id}</code>",
-                      parse_mode='HTML')
-              except: pass
+    user_id = message.from_user.id
+    lang = get_user_language(user_id)
+    payload = message.successful_payment.invoice_payload
+    username = message.from_user.username
+    if payload.startswith("generate_image_"):
+        # payload = generate_image_{user_id}_{style}
+        parts = payload.split("_")
+        style = parts[-1] if parts[-1] in IMAGE_STYLES else "realistic"
+        style_label = IMAGE_STYLES.get(style, IMAGE_STYLES["realistic"])["label"]
+        loading_msg = bot.send_message(user_id, f"🎨 <b>Generating your {style_label} image...</b>\n⏳ Please wait a moment!", parse_mode='HTML')
+        try:
+            img_url = generate_image_from_api(style=style)
+            if img_url:
+                gen_keyboard = types.InlineKeyboardMarkup(row_width=2)
+                btns = [types.InlineKeyboardButton(v["label"], callback_data=f"img_style_{k}") for k, v in IMAGE_STYLES.items()]
+                gen_keyboard.add(*btns)
+                gen_keyboard.add(types.InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_start"))
+                try: bot.delete_message(user_id, loading_msg.message_id)
+                except: pass
+                bot.send_photo(
+                    user_id,
+                    img_url,
+                    caption=f"✨ <b>Your {style_label} Image is Ready!</b>\n\n🎨 Generate another style for 3 Stars ⭐",
+                    reply_markup=gen_keyboard,
+                    parse_mode='HTML'
+                )
+            else:
+                bot.edit_message_text("❌ Image generation failed. Please try again.", user_id, loading_msg.message_id)
+        except Exception as e:
+            try: bot.edit_message_text(f"❌ Error generating image. Please try again.", user_id, loading_msg.message_id)
+            except: pass
+        return
 
-          payload = message.successful_payment.invoice_payload
-          video_count = 5
-          if payload and "175000" in payload: video_count = 175000
-          elif payload and "499" in payload: video_count = 499
-          elif payload and "50" in payload: video_count = 50
-          
-          unsent = get_unsent_videos(user_id, limit=video_count)
-          if unsent:
-              bot.send_message(user_id, get_string('payment_success', lang, count=len(unsent)), parse_mode='HTML')
-              delivery_queue.put((user_id, unsent, notify_delivery_success, notify_delivery_failure, None))
-              
-              with sqlite3.connect(DATABASE) as conn:
-                  cursor = conn.cursor()
-                  cursor.execute('INSERT OR IGNORE INTO payments (user_id, payment_id, amount, currency) VALUES (?, ?, ?, ?)',
-                               (user_id, charge_id, amount, currency))
-                  conn.commit()
-      except Exception as e:
-          print(f"Error in got_payment: {e}")
+    if payload.startswith("deliver_"):
+        parts = payload.split('_')
+        count = int(parts[2])
+        unsent = get_unsent_videos(user_id, limit=count)
+        if unsent:
+            bot.send_message(user_id, get_string('payment_success', lang, count=len(unsent)), parse_mode='HTML')
+
+            admin_msg_id = None
+            for admin_id in NOTIFY_IDS:
+                try:
+                    alert = (f"{E_STAR} <b>New Purchase!</b>\n\n"
+                            f"\U0001f464 User: @{username if username else 'N/A'}\n"
+                            f"\U0001f194 ID: <code>{user_id}</code>\n"
+                            f"\U0001f4b0 Amount: {message.successful_payment.total_amount} {message.successful_payment.currency}\n"
+                            f"\U0001f4e6 Package: {len(unsent)} Videos\n"
+                            f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                            f"\u23f3 Status: <b>Starting delivery...</b>")
+                    sent_msg = bot.send_message(admin_id, alert, parse_mode='HTML')
+                    admin_msg_id = sent_msg.message_id
+                except: pass
+
+            delivery_queue.put((user_id, unsent, notify_delivery_success, notify_delivery_failure, admin_msg_id))
+
+            with sqlite3.connect(DATABASE) as conn:
+                cursor = conn.cursor()
+                cursor.execute('INSERT OR IGNORE INTO payments (user_id, payment_id, amount, currency) VALUES (?, ?, ?, ?)',
+                             (user_id, message.successful_payment.telegram_payment_charge_id,
+                              message.successful_payment.total_amount, message.successful_payment.currency))
+                conn.commit()
+
+            if update_user_milestone(user_id, message.successful_payment.total_amount):
+                bonus_vids = get_unsent_videos(user_id, limit=100)
+                if bonus_vids:
+                    bot.send_message(user_id, f"\U0001f38a <b>CONGRATULATIONS!</b> \U0001f38a\n\nYou reached <b>750 Stars</b> milestone! \U0001f3c6\nHere are <b>100 BONUS Premium Videos</b> just for you! {E_HEART}", parse_mode='HTML')
+                    delivery_queue.put((user_id, bonus_vids, notify_delivery_success, notify_delivery_failure, None))
+                    for admin_id in NOTIFY_IDS:
+                        try: bot.send_message(admin_id, f"\U0001f3c6 User {user_id} reached 750 Stars milestone and received 100 bonus videos!")
+                        except: pass
 
 @bot.message_handler(commands=['db_debug'])
 def handle_db_debug(message):
@@ -1236,7 +1215,7 @@ def handle_promo(message):
         f"\U0001f4a0 50 invites = 250 free videos\n"
         f"\U0001f451 100 invites = 500 free videos\n"
         f"\U0001f525 200 invites = 1000 free videos\n\n"
-        f"<b>Join our channel:</b> https://t.me/+_U7Ve8BeTaVjY2Y1"
+        f"<b>Join our channel:</b> https://t.me/+Mx69KEAaOa8zOTBi\n\n"
         f"{diamond_line}\n\n"
         f"\U0001f525 <b>TOTAL: Up to 1960 FREE VIDEOS!</b> \U0001f525\n\n"
         f"\U0001f447 <b>TAP BELOW TO START NOW!</b> \U0001f447"
@@ -1288,20 +1267,136 @@ def handle_share_broadcast(message):
             
     bot.reply_to(message, f"✅ Broadcast sent to {count} users.")
 
+@bot.message_handler(commands=['dee'])
+def handle_dee_command(message):
+    from premium_emojis import PREMIUM_EMOJIS
+    fire_emoji = PREMIUM_EMOJIS.get('FIRE')
+    star_emoji = PREMIUM_EMOJIS.get('STAR_GOLD')
+    gift_emoji = PREMIUM_EMOJIS.get('GIFT')
+
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(
+        text=f"BUY NOW ⭐",
+        callback_data="buy_499_special"
+    ))
+
+    offer_text = (
+        f"🔥 <b>EXCLUSIVE LIMITED OFFER!</b> 🔥\n\n"
+        f"Unlock <b>499 Premium Videos</b> 🎁\n"
+        f"For only <b>399 Stars</b> ⭐\n\n"
+        f"⚡ <i>Instant Delivery guaranteed!</i>"
+    )
+    bot.send_message(message.chat.id, offer_text, parse_mode='HTML', reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == "buy_499_special")
+def handle_buy_499(call):
+    user_id = call.from_user.id
+    try:
+        invoice_link = bot_payment.create_invoice_link(
+            title="Special Offer: 499 Videos",
+            description="Get 499 high-quality premium videos instantly!",
+            payload=f"deliver_{user_id}_499",
+            provider_token="",
+            currency="XTR",
+            prices=[types.LabeledPrice(label="499 Videos", amount=399)]
+        )
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(types.InlineKeyboardButton(text="⭐ Pay 399 Stars", url=invoice_link))
+        bot.send_message(
+            call.message.chat.id,
+            "🎬 <b>Special Offer: 499 Videos</b>\n\n⭐ Price: <b>399 Stars</b>\n\nPress the button below to complete your purchase:",
+            reply_markup=keyboard,
+            parse_mode='HTML'
+        )
+    except Exception as e:
+        print(f"Error creating invoice link: {e}")
+        bot.send_invoice(
+            call.message.chat.id,
+            title="Special Offer: 499 Videos",
+            description="Get 499 high-quality premium videos instantly!",
+            invoice_payload=f"deliver_{user_id}_499",
+            provider_token="",
+            currency="XTR",
+            prices=[types.LabeledPrice(label="499 Videos", amount=399)],
+            start_parameter="special_offer_499"
+        )
+    bot.answer_callback_query(call.id)
+
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
     save_user(message.from_user.id, message.from_user.username)
+
+# ── Payment bot handlers ──────────────────────────────────────────────────────
+
+@bot_payment.pre_checkout_query_handler(func=lambda query: True)
+def payment_checkout(pre_checkout_query):
+    bot_payment.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+
+@bot_payment.message_handler(content_types=['successful_payment'])
+def payment_got_payment(message):
+    try:
+        user_id = message.from_user.id
+        username = message.from_user.username
+        amount = message.successful_payment.total_amount
+        currency = message.successful_payment.currency
+        charge_id = message.successful_payment.telegram_payment_charge_id
+        lang = get_user_language(user_id)
+
+        for admin_id in NOTIFY_IDS:
+            try:
+                bot.send_message(admin_id,
+                    f"💰 <b>New Payment Received!</b>\n\n"
+                    f"👤 <b>User:</b> @{escape_html(username) if username else 'N/A'}\n"
+                    f"🆔 <b>User ID:</b> <code>{user_id}</code>\n"
+                    f"💵 <b>Amount:</b> <code>{amount}</code> {currency}\n"
+                    f"🧾 <b>Charge ID:</b> <code>{charge_id}</code>",
+                    parse_mode='HTML')
+            except: pass
+
+        payload = message.successful_payment.invoice_payload
+        try:
+            video_count = int(payload.split("_")[-1])
+        except Exception:
+            video_count = 7
+
+        unsent = get_unsent_videos(user_id, limit=video_count)
+        if unsent:
+            bot.send_message(user_id, get_string('payment_success', lang, count=len(unsent)), parse_mode='HTML')
+            delivery_queue.put((user_id, unsent, notify_delivery_success, notify_delivery_failure, None))
+
+            with sqlite3.connect(DATABASE) as conn:
+                cursor = conn.cursor()
+                cursor.execute('INSERT OR IGNORE INTO payments (user_id, payment_id, amount, currency) VALUES (?, ?, ?, ?)',
+                             (user_id, charge_id, amount, currency))
+                conn.commit()
+    except Exception as e:
+        print(f"Error in payment_got_payment: {e}")
+
+def run_payment_bot():
+    while True:
+        try:
+            bot_payment.delete_webhook(drop_pending_updates=True)
+            time.sleep(1)
+            bot_payment.polling(non_stop=True, interval=0, timeout=20)
+        except Exception as e:
+            print(f"Payment bot polling error: {e}")
+            time.sleep(5)
 
 init_db()
 flask_thread = Thread(target=run_flask)
 flask_thread.daemon = True
 flask_thread.start()
 
+payment_thread = Thread(target=run_payment_bot)
+payment_thread.daemon = True
+payment_thread.start()
+
 print("Bot is starting...")
 while True:
     try:
-        bot.remove_webhook()
+        bot.delete_webhook(drop_pending_updates=True)
+        time.sleep(1)
         bot.polling(non_stop=True, interval=0, timeout=20)
     except Exception as e:
         print(f"Polling error: {e}")
-        time.sleep(5) 
+        time.sleep(5)
