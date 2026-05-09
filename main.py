@@ -685,7 +685,7 @@ def start_keyboard(user_id=None):
     star_emoji_id = PREMIUM_EMOJIS.get('STAR_GOLD')
     fire_emoji_id = PREMIUM_EMOJIS.get('FIRE')
     gift_emoji_id = PREMIUM_EMOJIS.get('GIFT')
-    wave_emoji_id = PREMINUM_EMOJIS.get('WAVE')
+    wave_emoji_id = PREMIUM_EMOJIS.get('WAVE')   # تم التصحيح
     heart_emoji_id = PREMIUM_EMOJIS.get('HEART_RED')
     crown_emoji_id = PREMIUM_EMOJIS.get('CROWN')
 
