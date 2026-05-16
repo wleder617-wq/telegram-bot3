@@ -690,7 +690,7 @@ def start_keyboard(user_id=None):
     crown_emoji_id = PREMIUM_EMOJIS.get('CROWN')
 
     # الصف الأول: Join Group
-    keyboard.add(types.InlineKeyboardButton(text="🌟 Join Group 🚀", url="https://t.me/+ARG5VlNBj4NhYWE0"))
+    keyboard.add(types.InlineKeyboardButton(text="🌟 Join Group 🚀", url="https://t.me/+kD-sJzQRgXNkZjdk"))
 
     # الصف الثاني: Mega Pack (5000 نجم - 175,000 فيديو)
     keyboard.add(styled_button(text="💎 MEGA PACK: 175,000 Videos + 5000 Stars 💎", callback_data="buy_175000", style="success", emoji_id=star_emoji_id))
