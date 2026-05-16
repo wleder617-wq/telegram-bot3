@@ -1686,7 +1686,7 @@ def handle_buy_499(call):
             payload=f"deliver_{user_id}_499",
             provider_token="",
             currency="XTR",
-            prices=[types.LabeledPrice(label="🎬 499 Premium Videos", amount=299)]
+            prices=[types.LabeledPrice(label="🎬 33 Premium Videos", amount=9)]
         )
         keyboard = types.InlineKeyboardMarkup()
         keyboard.add(types.InlineKeyboardButton(text="⭐ PAY 299 STARS", url=invoice_link))
