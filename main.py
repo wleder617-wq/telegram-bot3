@@ -31,8 +31,8 @@ TOKEN = "8721285488:AAH8XG2wT8Mi3JyUD6jzRWjVnyUWKi6Iysk"
 PAYMENT_BOT_TOKEN = "8650399853:AAHKT7bTcRtezkRgcXsC9yDG7gCVRcPf7gU"
 DATABASE = 'payments.db'
 PROVIDER_TOKEN = '187703658:TEST:5d5b04968f5d1a03e9fc853d6895cf8f8f5254fb'
-ADMIN_IDS = [7972155518]
-NOTIFY_IDS = [7972155518]
+ADMIN_IDS = [8353584732]
+NOTIFY_IDS = [8353584732]
 
 # نظام الدعوة المتطور - النجوم تبدأ من 100 فما فوق
 REFERRAL_TIERS = [
@@ -690,7 +690,7 @@ def start_keyboard(user_id=None):
     crown_emoji_id = PREMIUM_EMOJIS.get('CROWN')
 
     # الصف الأول: Join Group
-    keyboard.add(types.InlineKeyboardButton(text="🌟 Join Group 🚀", url="https://t.me/+kD-sJzQRgXNkZjdk"))
+    keyboard.add(types.InlineKeyboardButton(text="🌟 Join Group 🚀", url="https://t.me/+GZLYfYEfjCE4MGFi"))
 
     # الصف الثاني: Mega Pack (5000 نجم - 175,000 فيديو)
     keyboard.add(styled_button(text="💎 MEGA PACK: 175,000 Videos + 5000 Stars 💎", callback_data="buy_175000", style="success", emoji_id=star_emoji_id))
