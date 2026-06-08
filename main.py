@@ -23,7 +23,7 @@ E_WINK = get_emoji_tag('WINK', '😉')
 E_KISS = get_emoji_tag('KISS', '😘')
 E_PLEASE = get_emoji_tag('PLEADING_FACE', '🥺')
 E_SPARKLES = get_emoji_tag('STAR_GOLD', '✨')
-E_CROWN = get_emoji_tag('CROWN', '👑')
+E_CROWN = get_emoji_tag('CRO1WN', '👑')
 E_ROCKET = get_emoji_tag('ROCKET', '🚀')
 E_DIAMOND = get_emoji_tag('DIAMOND', '💎')
 
