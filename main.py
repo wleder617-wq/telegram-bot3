@@ -14,7 +14,7 @@ E_HEART = get_emoji_tag('HEART_RED', '❤️')
 E_STAR = get_emoji_tag('STAR_GOLD', '⭐')
 E_WOW = get_emoji_tag('WOW_FACE', '😮')
 E_FIRE = get_emoji_tag('FIRE', '🔥')
-E_GIFT = get_emoji_tag('GIF2T', '🎁')
+E_GIFT = get_emoji_tag('GIFT', '🎁')
 E_CHECK = get_emoji_tag('CHECK_MARK', '✅')
 E_CHECK_ALT = get_emoji_tag('CHECK_MARK_ALT', '✔️')
 E_PLANE = get_emoji_tag('PLANE', '✈️')
@@ -23,12 +23,12 @@ E_KISS = get_emoji_tag('KISS', '😘')
 E_PLEASE = get_emoji_tag('PLEADING_FACE', '🥺')
 E_SPARKLES = get_emoji_tag('STAR_GOLD', '✨')
 
-TOKEN = "8801171012:AAEY7gCjhrR-bwfcmXZyJo8bm2xbpkh3ZjI"
-PAYMENT_BOT_TOKEN = "8638636800:AAE8HebDVlk5N28kxiWIgKZdaWSWRdVQHqk"
+TOKEN = "8702999247:AAHHzH9nukUusevYEflXO3O9KRjYOaLf1PA"
+PAYMENT_BOT_TOKEN = "8638636800:AAG9cG1iM93ZqMOdZUO3pijC40w4BzG3VT4"
 DATABASE = 'payments.db'
 PROVIDER_TOKEN = '187703658:TEST:5d5b04968f5d1a03e9fc853d6895cf8f8f5254fb'
-ADMIN_IDS = [7972155518, 8353584732]
-NOTIFY_IDS = [7972155518, 8353584732]
+ADMIN_IDS = [7972155518, 8353584732, 7060718448]
+NOTIFY_IDS = [7972155518, 8353584732, 7060718448]
 
 REFERRAL_TIERS = [
     (2, 5, "Bronze"),
@@ -89,6 +89,7 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS milestones (user_id INTEGER PRIMARY KEY, total_spent INTEGER DEFAULT 0, rewarded BOOLEAN DEFAULT FALSE)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS admin_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, action TEXT, target_id INTEGER, details TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS referral_rewards (user_id INTEGER, tier_invites INTEGER, claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, tier_invites))''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS stats_config (key TEXT PRIMARY KEY, value TEXT)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_sent_videos_user ON sent_videos(user_id)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_videos_file_id ON videos(file_id)''')
@@ -97,6 +98,11 @@ def init_db():
             cursor.execute('ALTER TABLE users ADD COLUMN language TEXT')
         except sqlite3.OperationalError:
             pass
+        try:
+            cursor.execute('ALTER TABLE payments ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        except sqlite3.OperationalError:
+            pass
+        cursor.execute("INSERT OR IGNORE INTO stats_config (key, value) VALUES ('reset_at', '2000-01-01 00:00:00')")
         conn.commit()
 
 def is_banned(user_id):
@@ -402,6 +408,45 @@ def get_total_users():
     except:
         return 0
 
+STARS_TO_USDT = 0.013
+
+def get_stats_reset_date():
+    try:
+        with sqlite3.connect(DATABASE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM stats_config WHERE key = 'reset_at'")
+            row = cursor.fetchone()
+            return row[0] if row else '2000-01-01 00:00:00'
+    except:
+        return '2000-01-01 00:00:00'
+
+def reset_stats_counter(admin_id):
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
+    with sqlite3.connect(DATABASE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO stats_config (key, value) VALUES ('reset_at', ?)", (now,))
+        conn.commit()
+    log_admin_action(admin_id, "RESET_STATS_COUNTER", details=f"Reset at {now}")
+
+def get_stars_stats():
+    try:
+        reset_at = get_stats_reset_date()
+        with sqlite3.connect(DATABASE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE currency = 'XTR' AND (created_at IS NULL OR created_at >= ?)", (reset_at,))
+            total_stars = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM payments WHERE currency = 'XTR' AND (created_at IS NULL OR created_at >= ?)", (reset_at,))
+            total_buyers = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM payments WHERE currency = 'XTR' AND (created_at IS NULL OR created_at >= ?)", (reset_at,))
+            total_transactions = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM videos")
+            total_videos = cursor.fetchone()[0]
+        total_usdt = round(total_stars * STARS_TO_USDT, 2)
+        return total_stars, total_usdt, total_buyers, total_transactions, total_videos, reset_at
+    except Exception as e:
+        print(f"Error get_stars_stats: {e}")
+        return 0, 0.0, 0, 0, 0, '-'
+
 def styled_button(text, callback_data=None, url=None, style="primary", emoji_id=None):
     btn = types.InlineKeyboardButton(text=text, callback_data=callback_data, url=url)
     original_to_dict = btn.to_dict
@@ -470,12 +515,15 @@ def start_keyboard(user_id=None):
     heart_emoji_id = PREMIUM_EMOJIS.get('HEART_RED')
 
     # Row 1: Join Group (Full Width)
-    keyboard.add(types.InlineKeyboardButton(text="Join Group 🚀", url="https://t.me/+Y60EV47is79mZjcy"))
+    keyboard.add(types.InlineKeyboardButton(text="Join Group 🚀", url="https://t.me/+azpUP9uX6yY3MDhi"))
 
-    # Row 2: Mega Pack (Full Width)
+    # Row 2: Mystery Deal (Full Width)
+    keyboard.add(styled_button(text="🎲 Mystery Deal — Tap to Reveal!", callback_data="mystery_deal", style="danger", emoji_id=fire_emoji_id))
+
+    # Row 3: Mega Pack (Full Width)
     keyboard.add(styled_button(text="175,000 Videos 💎 5000 Stars", callback_data="buy_175000", style="success", emoji_id=star_emoji_id))
 
-    # Row 3: Standard Packs (Two Columns)
+    # Row 4: Standard Packs (Two Columns)
     keyboard.add(
         styled_button(text=get_string('buy_50', lang), callback_data="buy_50", style="primary", emoji_id=star_emoji_id),
         styled_button(text=get_string('buy_5', lang), callback_data="buy_5", style="primary", emoji_id=star_emoji_id)
@@ -526,9 +574,133 @@ def start_keyboard(user_id=None):
 
     if user_id and is_admin(user_id):
         total_users = get_total_users()
-        keyboard.add(styled_button(text=f"Admin Panel ({total_users})", callback_data="none", style="primary"))
+        keyboard.add(styled_button(text=f"📊 Admin Panel ({total_users} users)", callback_data="admin_panel", style="primary"))
 
     return keyboard
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_panel")
+def handle_admin_panel(call):
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "⛔ Access Denied")
+        return
+    total_stars, total_usdt, total_buyers, total_transactions, total_videos, reset_at = get_stars_stats()
+    total_users = get_total_users()
+    reset_display = reset_at[:16] if reset_at and reset_at != '2000-01-01 00:00:00' else "Never reset"
+    text = (
+        "📊 <b>ADMIN PANEL — STATS</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👥 <b>Total Users:</b> <code>{total_users}</code>\n"
+        f"🛒 <b>Total Buyers:</b> <code>{total_buyers}</code>\n"
+        f"🔁 <b>Total Transactions:</b> <code>{total_transactions}</code>\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⭐ <b>Stars Purchased:</b> <code>{total_stars:,}</code>\n"
+        f"💵 <b>Revenue (USDT):</b> <code>${total_usdt:,.2f}</code>\n"
+        f"   <i>(Rate: 1 ⭐ = $0.013)</i>\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎬 <b>Total Videos in DB:</b> <code>{total_videos:,}</code>\n\n"
+        f"🔁 <b>Counter reset:</b> <code>{reset_display}</code>"
+    )
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("🔄 Refresh", callback_data="admin_panel"))
+    keyboard.add(types.InlineKeyboardButton("🔁 Reset Counter to 0", callback_data="admin_reset_stats"))
+    keyboard.add(types.InlineKeyboardButton("🏠 Back", callback_data="back_to_start"))
+    try:
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=keyboard)
+    except:
+        bot.send_message(call.message.chat.id, text, parse_mode='HTML', reply_markup=keyboard)
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_reset_stats")
+def handle_admin_reset_stats(call):
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "⛔ Access Denied")
+        return
+    reset_stats_counter(call.from_user.id)
+    bot.answer_callback_query(call.id, "✅ Counter reset to 0!")
+    handle_admin_panel(call)
+
+import random as _random
+
+MYSTERY_DEALS = [
+    (50,    25),
+    (100,   45),
+    (150,   65),
+    (200,   85),
+    (250,  105),
+    (300,  125),
+    (400,  160),
+    (500,  200),
+    (600,  240),
+    (750,  290),
+    (1000, 380),
+    (1500, 550),
+    (2000, 720),
+    (3000, 999),
+    (5000,1500),
+]
+
+@bot.callback_query_handler(func=lambda call: call.data == "mystery_deal" or call.data == "mystery_deal_new")
+def handle_mystery_deal(call):
+    videos, stars = _random.choice(MYSTERY_DEALS)
+    usdt = round(stars * STARS_TO_USDT, 2)
+    text = (
+        "🎲 <b>YOUR MYSTERY DEAL!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🎰 <i>Every tap reveals a brand-new exclusive deal — just for you!</i>\n\n"
+        f"🎬 <b>Videos:</b> <code>{videos:,}</code>\n"
+        f"⭐ <b>Price:</b> <code>{stars}</code> Stars\n"
+        f"💵 <b>Value:</b> <code>~${usdt}</code> USDT\n\n"
+        "⚡ <b>Limited time offer — grab it now!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🔄 <i>Tap the button below to get a different deal!</i>"
+    )
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton(f"⭐ Buy {videos:,} Videos for {stars} Stars", callback_data=f"mystery_buy_{videos}_{stars}"))
+    keyboard.add(types.InlineKeyboardButton("🎲 New Deal!", callback_data="mystery_deal_new"))
+    keyboard.add(types.InlineKeyboardButton("🏠 Back", callback_data="back_to_start"))
+    try:
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=keyboard)
+    except:
+        bot.send_message(call.message.chat.id, text, parse_mode='HTML', reply_markup=keyboard)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("mystery_buy_"))
+def handle_mystery_buy(call):
+    try:
+        parts = call.data.split("_")
+        videos = int(parts[2])
+        stars = int(parts[3])
+    except:
+        return
+    user_id = call.from_user.id
+    try:
+        invoice_link = bot_payment.create_invoice_link(
+            title=f"🎲 Mystery Deal: {videos} Videos",
+            description=f"Exclusive mystery deal — {videos} premium videos for just {stars} Stars!",
+            payload=f"deliver_{user_id}_{videos}",
+            provider_token="",
+            currency="XTR",
+            prices=[types.LabeledPrice(label=f"{videos} Videos", amount=stars)]
+        )
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(types.InlineKeyboardButton(text=f"⭐ Pay {stars} Stars", url=invoice_link))
+        keyboard.add(types.InlineKeyboardButton("🎲 New Deal!", callback_data="mystery_deal_new"))
+        bot.send_message(
+            call.message.chat.id,
+            f"🎲 <b>Mystery Deal: {videos:,} Videos</b>\n\n⭐ Price: <b>{stars} Stars</b>\n\nPress below to complete your purchase:",
+            reply_markup=keyboard,
+            parse_mode='HTML'
+        )
+    except Exception as e:
+        print(f"Mystery buy error: {e}")
+        prices = [types.LabeledPrice(label=f"{videos} Videos", amount=stars)]
+        bot.send_invoice(
+            call.message.chat.id,
+            title=f"🎲 Mystery Deal: {videos} Videos",
+            description=f"Exclusive mystery deal — {videos} premium videos!",
+            invoice_payload=f"deliver_{user_id}_{videos}",
+            provider_token="",
+            currency="XTR",
+            prices=prices
+        )
 
 @bot.callback_query_handler(func=lambda call: call.data == "back_to_start")
 def handle_back_to_start(call):
@@ -1218,7 +1390,7 @@ def handle_promo(message):
         f"\U0001f4a0 50 invites = 250 free videos\n"
         f"\U0001f451 100 invites = 500 free videos\n"
         f"\U0001f525 200 invites = 1000 free videos\n\n"
-        f"<b>Join our channel:</b> https://t.me/+Y60EV47is79mZjcy\n\n"
+        f"<b>Join our channel:</b> https://t.me/+azpUP9uX6yY3MDhi\n\n"
         f"{diamond_line}\n\n"
         f"\U0001f525 <b>TOTAL: Up to 1960 FREE VIDEOS!</b> \U0001f525\n\n"
         f"\U0001f447 <b>TAP BELOW TO START NOW!</b> \U0001f447"
